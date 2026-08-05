@@ -16,7 +16,18 @@ import {
   CogIcon,
   ArrowLeftIcon,
   ArrowDownTrayIcon,
+  CpuChipIcon,
+  CircleStackIcon,
 } from "@heroicons/react/20/solid";
+import {
+  getMemoryConfig,
+  saveMemoryConfig,
+  getShortTermStats,
+  clearShortTermMemory,
+  getLongTermStats,
+  clearLongTermMemory,
+  type MemoryConfig,
+} from "@/utils/indexedDBMemory";
 import { Settings as SettingsType } from "@/gotypes";
 import { useNavigate } from "@tanstack/react-router";
 import { useUser } from "@/hooks/useUser";
@@ -48,6 +59,27 @@ export default function Settings() {
   const queryClient = useQueryClient();
   const [showSaved, setShowSaved] = useState(false);
   const [restartMessage, setRestartMessage] = useState(false);
+  const [memConfig, setMemConfig] = useState<MemoryConfig>(() => getMemoryConfig());
+  const [shortTermStats, setShortTermStats] = useState({ count: 0, sizeBytes: 0 });
+  const [longTermStats, setLongTermStats] = useState({ count: 0, sizeBytes: 0 });
+
+  const refreshMemStats = useCallback(async () => {
+    const st = await getShortTermStats();
+    const lt = await getLongTermStats();
+    setShortTermStats(st);
+    setLongTermStats(lt);
+  }, []);
+
+  useEffect(() => {
+    refreshMemStats();
+  }, [refreshMemStats]);
+
+  const handleMemChange = (key: keyof MemoryConfig, value: any) => {
+    const updated = saveMemoryConfig({ [key]: value });
+    setMemConfig(updated);
+    setShowSaved(true);
+    setTimeout(() => setShowSaved(false), 1500);
+  };
   const {
     user,
     isAuthenticated,
@@ -563,6 +595,147 @@ export default function Settings() {
                   </div>
                 </div>
               </Field>
+            </div>
+          </div>
+
+          {/* IndexedDB Long Term & Short Term Memory Engine */}
+          <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
+            <div className="border-b border-neutral-100 p-4 dark:border-neutral-700/50">
+              <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+                IndexedDB Memory Engine
+              </h2>
+              <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                Configure short-term session memory context and long-term persistent knowledge vectors stored in client IndexedDB.
+              </p>
+            </div>
+
+            <div className="space-y-6 p-4">
+              {/* Short Term Memory */}
+              <div className="rounded-lg bg-neutral-50 p-4 dark:bg-neutral-900/50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-start space-x-3">
+                    <CpuChipIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
+                    <div>
+                      <Label>IndexedDB Short-Term Memory</Label>
+                      <Description>
+                        Buffers active conversation turns in browser IndexedDB for low-latency context retrieval.
+                      </Description>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={memConfig.shortTermEnabled}
+                    onChange={(checked) => handleMemChange("shortTermEnabled", checked)}
+                  />
+                </div>
+
+                {memConfig.shortTermEnabled && (
+                  <div className="mt-4 space-y-4 border-t border-neutral-200/60 pt-3 dark:border-neutral-700/60">
+                    <div className="flex items-center justify-between text-sm text-neutral-600 dark:text-neutral-300">
+                      <span>Max Short-Term Items ({memConfig.shortTermMaxItems} turns)</span>
+                      <Input
+                        type="number"
+                        className="w-24 text-right"
+                        value={memConfig.shortTermMaxItems}
+                        onChange={(e) => handleMemChange("shortTermMaxItems", Number(e.target.value))}
+                        min={5}
+                        max={500}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-sm text-neutral-600 dark:text-neutral-300">
+                      <span>Expiration TTL ({memConfig.shortTermTTLMinutes} mins)</span>
+                      <Input
+                        type="number"
+                        className="w-24 text-right"
+                        value={memConfig.shortTermTTLMinutes}
+                        onChange={(e) => handleMemChange("shortTermTTLMinutes", Number(e.target.value))}
+                        min={10}
+                        max={1440}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2">
+                      <span className="text-xs text-neutral-500 font-mono">
+                        Storage: {shortTermStats.count} items ({(shortTermStats.sizeBytes / 1024).toFixed(1)} KB)
+                      </span>
+                      <Button
+                        type="button"
+                        color="white"
+                        className="text-xs px-2.5 py-1"
+                        onClick={async () => {
+                          await clearShortTermMemory();
+                          await refreshMemStats();
+                        }}
+                      >
+                        Clear Short-Term DB
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Long Term Memory */}
+              <div className="rounded-lg bg-neutral-50 p-4 dark:bg-neutral-900/50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-start space-x-3">
+                    <CircleStackIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
+                    <div>
+                      <Label>IndexedDB Long-Term Memory</Label>
+                      <Description>
+                        Persists cross-session user facts, preferences, and knowledge summaries across application restarts.
+                      </Description>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={memConfig.longTermEnabled}
+                    onChange={(checked) => handleMemChange("longTermEnabled", checked)}
+                  />
+                </div>
+
+                {memConfig.longTermEnabled && (
+                  <div className="mt-4 space-y-4 border-t border-neutral-200/60 pt-3 dark:border-neutral-700/60">
+                    <div className="flex items-center justify-between text-sm text-neutral-600 dark:text-neutral-300">
+                      <span>Max Knowledge Entries ({memConfig.longTermMaxItems} entries)</span>
+                      <Input
+                        type="number"
+                        className="w-24 text-right"
+                        value={memConfig.longTermMaxItems}
+                        onChange={(e) => handleMemChange("longTermMaxItems", Number(e.target.value))}
+                        min={50}
+                        max={10000}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-sm text-neutral-600 dark:text-neutral-300">
+                      <div>
+                        <span>Auto-Summarization</span>
+                        <p className="text-xs text-neutral-400">Compress older turns into long-term summary vectors</p>
+                      </div>
+                      <Switch
+                        checked={memConfig.longTermAutoSummarize}
+                        onChange={(checked) => handleMemChange("longTermAutoSummarize", checked)}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2">
+                      <span className="text-xs text-neutral-500 font-mono">
+                        Storage: {longTermStats.count} entries ({(longTermStats.sizeBytes / 1024).toFixed(1)} KB)
+                      </span>
+                      <Button
+                        type="button"
+                        color="white"
+                        className="text-xs px-2.5 py-1 text-red-600 dark:text-red-400"
+                        onClick={async () => {
+                          await clearLongTermMemory();
+                          await refreshMemStats();
+                        }}
+                      >
+                        Clear Long-Term DB
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
